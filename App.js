@@ -1,10 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Provider, useDispatch, useSelector } from 'react-redux';
 import { createStore } from 'redux';
-import { View, Text, Button, TextInput, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, TextInput, StyleSheet, TouchableOpacity } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
-import Icon from 'react-native-vector-icons/FontAwesome'; // Ícones modernos
 
 // Actions
 const START = 'START';
@@ -12,19 +11,19 @@ const STOP = 'STOP';
 const RESET = 'RESET';
 const TICK = 'TICK';
 const SET_TIME = 'SET_TIME';
-const INCREMENT_TIME = 'INCREMENT_TIME';
-const DECREMENT_TIME = 'DECREMENT_TIME';
+const INCREMENT = 'INCREMENT';
+const DECREMENT = 'DECREMENT';
 
 const start = () => ({ type: START });
 const stop = () => ({ type: STOP });
 const reset = () => ({ type: RESET });
 const tick = () => ({ type: TICK });
 const setTime = (hours, minutes, seconds) => ({ type: SET_TIME, payload: { hours, minutes, seconds } });
-const incrementTime = () => ({ type: INCREMENT_TIME });
-const decrementTime = () => ({ type: DECREMENT_TIME });
+const incrementTime = () => ({ type: INCREMENT });
+const decrementTime = () => ({ type: DECREMENT });
 
 // Reducer
-const initialState = { hours: 0, minutes: 0, seconds: 0, running: false };
+const initialState = { hours: 0, minutes: 0, seconds: 0, running: false, totalSeconds: 0 };
 const timerReducer = (state = initialState, action) => {
   switch (action.type) {
     case START:
@@ -32,34 +31,33 @@ const timerReducer = (state = initialState, action) => {
     case STOP:
       return { ...state, running: false };
     case RESET:
-      return { hours: 0, minutes: 0, seconds: 0, running: false };
+      return { ...state, hours: 0, minutes: 0, seconds: 0, totalSeconds: 0, running: false };
     case SET_TIME:
-      return { ...state, ...action.payload, running: false };
+      const totalTimeInSeconds = action.payload.hours * 3600 + action.payload.minutes * 60 + action.payload.seconds;
+      return { ...state, ...action.payload, totalSeconds: totalTimeInSeconds };
     case TICK:
-      if (!state.running) return state;
-      let { hours, minutes, seconds } = state;
-      if (hours === 0 && minutes === 0 && seconds === 0) {
-        return { ...state, running: false }; // Para quando chegar a zero
+      if (!state.running || state.totalSeconds <= 0) return state;
+      const remainingTime = state.totalSeconds - 1;
+      const hours = Math.floor(remainingTime / 3600);
+      const minutes = Math.floor((remainingTime % 3600) / 60);
+      const seconds = remainingTime % 60;
+
+      return { ...state, hours, minutes, seconds, totalSeconds: remainingTime };
+    case INCREMENT:
+      const incrementedTime = state.totalSeconds + 10;
+      const incrementedHours = Math.floor(incrementedTime / 3600);
+      const incrementedMinutes = Math.floor((incrementedTime % 3600) / 60);
+      const incrementedSeconds = incrementedTime % 60;
+      return { ...state, hours: incrementedHours, minutes: incrementedMinutes, seconds: incrementedSeconds, totalSeconds: incrementedTime };
+    case DECREMENT:
+      if (state.totalSeconds >= 10) {
+        const decrementedTime = state.totalSeconds - 10;
+        const decrementedHours = Math.floor(decrementedTime / 3600);
+        const decrementedMinutes = Math.floor((decrementedTime % 3600) / 60);
+        const decrementedSeconds = decrementedTime % 60;
+        return { ...state, hours: decrementedHours, minutes: decrementedMinutes, seconds: decrementedSeconds, totalSeconds: decrementedTime };
       }
-      if (seconds === 0) {
-        if (minutes === 0) {
-          hours--;
-          minutes = 59;
-        } else {
-          minutes--;
-        }
-        seconds = 59;
-      } else {
-        seconds--;
-      }
-      return { hours, minutes, seconds, running: true };
-    case INCREMENT_TIME:
-      return { ...state, seconds: state.seconds + 10 };
-    case DECREMENT_TIME:
-      if (state.seconds > 0) {
-        return { ...state, seconds: state.seconds - 10 };
-      }
-      return state;
+      return state; // Impede que o tempo vá para valores negativos
     default:
       return state;
   }
@@ -77,21 +75,24 @@ const Timer = () => {
 
   useEffect(() => {
     let interval;
-    if (running) {
-      interval = setInterval(() => dispatch(tick()), 1000);
+    if (running && (hours > 0 || minutes > 0 || seconds > 0)) {
+      interval = setInterval(() => {
+        dispatch(tick());
+      }, 1000);
     } else {
       clearInterval(interval);
     }
 
+    // Limpar intervalo quando a tela for desmontada ou o cronômetro for parado
     return () => clearInterval(interval);
-  }, [running]);
+  }, [running, dispatch, hours, minutes, seconds]);
 
   const formatTime = (num) => String(num).padStart(2, '0');
 
   return (
     <View style={styles.timerContainer}>
       <Text style={styles.timerText}>{`${formatTime(hours)}:${formatTime(minutes)}:${formatTime(seconds)}`}</Text>
-      
+
       <View style={styles.inputContainer}>
         <TextInput
           style={styles.input}
@@ -117,26 +118,31 @@ const Timer = () => {
       </View>
 
       <View style={styles.buttonContainer}>
-        <TouchableOpacity style={styles.button} onPress={() => dispatch(setTime(parseInt(inputHours) || 0, parseInt(inputMinutes) || 0, parseInt(inputSeconds) || 0))}>
+        <TouchableOpacity
+          style={styles.button}
+          onPress={() =>
+            dispatch(setTime(parseInt(inputHours) || 0, parseInt(inputMinutes) || 0, parseInt(inputSeconds) || 0))
+          }>
           <Text style={styles.buttonText}>Definir Time</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.button} onPress={() => dispatch(running ? stop() : start())}>
-          <Text style={styles.buttonText}>{running ? "Pausar" : "Iniciar"}</Text>
+        <TouchableOpacity style={[styles.button, { backgroundColor: running ? '#e74c3c' : '#27ae60' }]} onPress={() => dispatch(running ? stop() : start())}>
+          <Text style={styles.buttonText}>{running ? 'Pausar' : 'Iniciar'}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.button} onPress={() => dispatch(reset())}>
           <Text style={styles.buttonText}>Resetar</Text>
         </TouchableOpacity>
-      </View>
 
-      <View style={styles.adjustContainer}>
-        <TouchableOpacity style={styles.adjustButton} onPress={() => dispatch(incrementTime())}>
-          <Icon name="plus" size={20} color="white" />
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.adjustButton} onPress={() => dispatch(decrementTime())}>
-          <Icon name="minus" size={20} color="white" />
-        </TouchableOpacity>
+        {/* Botões de incremento e decremento */}
+        <View style={styles.adjustContainer}>
+          <TouchableOpacity style={styles.adjustButton} onPress={() => dispatch(incrementTime())}>
+            <Text style={styles.buttonText}>+10s</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.adjustButton} onPress={() => dispatch(decrementTime())}>
+            <Text style={styles.buttonText}>-10s</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     </View>
   );
@@ -167,9 +173,9 @@ const Stack = createStackNavigator();
 const App = () => (
   <Provider store={store}>
     <NavigationContainer>
-      <Stack.Navigator>
-        <Stack.Screen name="ScreenOne" component={ScreenOne} options={{ title: 'Tela 1' }} />
-        <Stack.Screen name="ScreenTwo" component={ScreenTwo} options={{ title: 'Tela 2' }} />
+      <Stack.Navigator screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="ScreenOne" component={ScreenOne} />
+        <Stack.Screen name="ScreenTwo" component={ScreenTwo} />
       </Stack.Navigator>
     </NavigationContainer>
   </Provider>
